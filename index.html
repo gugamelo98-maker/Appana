@@ -443,6 +443,51 @@
   .video-actions { display:flex; gap:6px; margin-top:10px; }
 
   /* Scrollbar */
+  /* ─── RECORDING FAB ─── */
+  .rec-fab {
+    position: fixed; bottom: 90px; left: 20px;
+    width: 54px; height: 54px;
+    background: var(--surface2);
+    border: 2px solid var(--border);
+    border-radius: 50%;
+    display: none;
+    align-items: center; justify-content: center;
+    font-size: 22px; cursor: pointer;
+    z-index: 99; transition: all 0.2s;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  }
+  .rec-fab.recording {
+    background: rgba(248,113,113,0.15);
+    border-color: var(--red);
+    animation: rec-pulse 1.5s infinite;
+  }
+  @keyframes rec-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(248,113,113,0.5); }
+    50% { box-shadow: 0 0 0 10px rgba(248,113,113,0); }
+  }
+  @media (max-width: 768px) { .rec-fab { display: flex; } }
+
+  /* Barra de gravação (desktop) */
+  .rec-bar {
+    display: none;
+    position: fixed; bottom: 24px; right: 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 30px;
+    padding: 10px 18px;
+    align-items: center; gap: 10px;
+    z-index: 99;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    font-size: 13px; font-weight: 600;
+  }
+  .rec-bar.visible { display: flex; }
+  .rec-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--red); flex-shrink: 0;
+  }
+  .rec-dot.pulse { animation: rec-pulse 1.5s infinite; }
+  @media (min-width: 769px) { .rec-bar { display: flex; } }
+
   /* Scrollbar */
   ::-webkit-scrollbar { width: 5px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -867,6 +912,18 @@
   </div>
 </div>
 
+<!-- FAB Gravação (mobile) -->
+<button class="rec-fab" id="rec-fab" onclick="toggleGravacaoSessao()" title="Gravar atendimento">🎙️</button>
+
+<!-- Barra de gravação (desktop) -->
+<div class="rec-bar" id="rec-bar" style="display:none">
+  <div class="rec-dot" id="rec-dot"></div>
+  <span id="rec-bar-label" style="color:var(--text2)">Pronto para gravar</span>
+  <span id="rec-bar-timer" style="font-family:'DM Mono',monospace;color:var(--red);min-width:44px;display:none">00:00</span>
+  <button class="btn btn-ghost" style="padding:5px 12px;font-size:12px" onclick="toggleGravacaoSessao()" id="rec-bar-btn">⏺ Gravar</button>
+  <button class="btn" style="padding:5px 10px;font-size:12px;background:rgba(248,113,113,0.15);border:1px solid var(--red);color:var(--red)" onclick="fecharRecBar()">✕</button>
+</div>
+
 <!-- TOAST -->
 <div id="toast"></div>
 
@@ -1037,6 +1094,19 @@ function navTo(page) {
   if (page === 'pacientes') carregarPacientesPage();
   if (page === 'graficos') carregarGraficosPage();
   if (page === 'videos') carregarVideosPage();
+
+  // Mostra barra de gravação só na tela de sessão
+  const recBar = document.getElementById('rec-bar');
+  const recFab = document.getElementById('rec-fab');
+  if (page === 'nova-sessao') {
+    recBar.style.display = 'flex';
+    recFab.style.display = 'flex';
+  } else {
+    if (!window._sessaoGravando) {
+      recBar.style.display = 'none';
+      recFab.style.display = 'none';
+    }
+  }
 }
 
 // ═══════════════════════════════════════════════
@@ -2017,6 +2087,156 @@ async function excluirVideo(id, path) {
     toast('Vídeo excluído ✅', 'success');
     carregarVideos();
   } catch(e) { toast('Erro ao excluir: ' + e.message, 'error'); }
+}
+
+// ═══════════════════════════════════════════════
+// GRAVAÇÃO DURANTE SESSÃO
+// ═══════════════════════════════════════════════
+window._sessaoGravando = false;
+let _sessaoRecorder = null;
+let _sessaoChunks = [];
+let _sessaoStream = null;
+let _sessaoTimer = null;
+let _sessaoSecs = 0;
+
+async function toggleGravacaoSessao() {
+  if (window._sessaoGravando) {
+    pararGravacaoSessao();
+  } else {
+    iniciarGravacaoSessao();
+  }
+}
+
+async function iniciarGravacaoSessao() {
+  try {
+    // Solicita apenas áudio no mobile, áudio+vídeo no desktop
+    const isMobile = window.innerWidth <= 768;
+    const constraints = isMobile
+      ? { audio: true, video: { facingMode: 'environment' } }
+      : { audio: true, video: true };
+
+    _sessaoStream = await navigator.mediaDevices.getUserMedia(constraints);
+  } catch(e) {
+    // Tenta só áudio se câmera falhar
+    try {
+      _sessaoStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch(e2) {
+      toast('Não foi possível acessar câmera/microfone', 'error');
+      return;
+    }
+  }
+
+  _sessaoChunks = [];
+  _sessaoSecs = 0;
+  window._sessaoGravando = true;
+
+  const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+    ? 'video/webm;codecs=vp9'
+    : MediaRecorder.isTypeSupported('video/webm') ? 'video/webm' : 'audio/webm';
+
+  _sessaoRecorder = new MediaRecorder(_sessaoStream, { mimeType });
+  _sessaoRecorder.ondataavailable = e => { if (e.data.size > 0) _sessaoChunks.push(e.data); };
+  _sessaoRecorder.onstop = () => salvarGravacaoSessao(mimeType);
+  _sessaoRecorder.start(1000);
+
+  // UI — FAB
+  const fab = document.getElementById('rec-fab');
+  fab.textContent = '⏹';
+  fab.classList.add('recording');
+
+  // UI — Barra desktop
+  const bar = document.getElementById('rec-bar');
+  bar.style.display = 'flex';
+  bar.style.borderColor = 'var(--red)';
+  document.getElementById('rec-bar-label').textContent = 'Gravando...';
+  document.getElementById('rec-bar-label').style.color = 'var(--red)';
+  document.getElementById('rec-bar-btn').textContent = '⏹ Parar';
+  document.getElementById('rec-bar-timer').style.display = 'inline';
+  document.getElementById('rec-dot').classList.add('pulse');
+
+  _sessaoTimer = setInterval(() => {
+    _sessaoSecs++;
+    const m = String(Math.floor(_sessaoSecs / 60)).padStart(2, '0');
+    const s = String(_sessaoSecs % 60).padStart(2, '0');
+    document.getElementById('rec-bar-timer').textContent = `${m}:${s}`;
+  }, 1000);
+
+  toast('🔴 Gravação iniciada!', 'success');
+}
+
+function pararGravacaoSessao() {
+  if (_sessaoRecorder && _sessaoRecorder.state !== 'inactive') {
+    _sessaoRecorder.stop();
+  }
+  if (_sessaoStream) {
+    _sessaoStream.getTracks().forEach(t => t.stop());
+    _sessaoStream = null;
+  }
+  clearInterval(_sessaoTimer);
+  window._sessaoGravando = false;
+
+  // Reset UI
+  const fab = document.getElementById('rec-fab');
+  fab.textContent = '🎙️';
+  fab.classList.remove('recording');
+
+  document.getElementById('rec-bar-label').textContent = 'Pronto para gravar';
+  document.getElementById('rec-bar-label').style.color = '';
+  document.getElementById('rec-bar-btn').textContent = '⏺ Gravar';
+  document.getElementById('rec-bar-timer').style.display = 'none';
+  document.getElementById('rec-dot').classList.remove('pulse');
+  document.getElementById('rec-bar').style.borderColor = '';
+}
+
+async function salvarGravacaoSessao(mimeType) {
+  const blob = new Blob(_sessaoChunks, { type: mimeType });
+  const ext = mimeType.includes('video') ? 'webm' : 'webm';
+
+  // Pega paciente da sessão atual
+  const pacId = state.pacienteSelecionado;
+  const pac = state.pacientes.find(p => p.id === pacId);
+
+  // Salva automaticamente no storage
+  const fileName = `${pacId || 'sem-paciente'}/${Date.now()}_sessao.${ext}`;
+  const titulo = pac ? `Sessão ${pac.nome} — ${new Date().toLocaleDateString('pt-BR')}` : `Gravação ${new Date().toLocaleDateString('pt-BR')}`;
+
+  toast('Salvando gravação...', '');
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/videos-atendimentos/${fileName}`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': blob.type,
+      },
+      body: blob
+    });
+    if (!res.ok) throw new Error(await res.text());
+
+    await sbFetch('videos', {
+      method: 'POST',
+      body: JSON.stringify({
+        paciente_id: pacId || null,
+        sessao_id: null, // será vinculado ao salvar a sessão
+        titulo,
+        storage_path: fileName,
+        tamanho_bytes: blob.size,
+      })
+    });
+
+    toast('Gravação salva! 🎥', 'success');
+    fecharRecBar();
+  } catch(e) {
+    toast('Erro ao salvar gravação: ' + e.message, 'error');
+    console.error(e);
+  }
+}
+
+function fecharRecBar() {
+  if (window._sessaoGravando) pararGravacaoSessao();
+  document.getElementById('rec-bar').style.display = 'none';
+  document.getElementById('rec-fab').style.display = 'none';
 }
 
 // ═══════════════════════════════════════════════
