@@ -412,6 +412,37 @@
     .page-header-actions { display: flex; gap: 10px; }
   }
 
+  /* ─── VIDEO GALLERY ─── */
+  .video-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+  .video-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    transition: transform 0.2s, border-color 0.2s;
+  }
+  .video-card:hover { transform: translateY(-2px); border-color: var(--accent); }
+  .video-thumb {
+    width: 100%; aspect-ratio: 16/9;
+    background: #000;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 40px; cursor: pointer; position: relative;
+    overflow: hidden;
+  }
+  .video-thumb video { width:100%; height:100%; object-fit:cover; }
+  .video-thumb .play-overlay {
+    position:absolute; inset:0;
+    background: rgba(0,0,0,0.4);
+    display:flex; align-items:center; justify-content:center;
+    font-size:42px; opacity:0; transition:opacity 0.2s;
+  }
+  .video-card:hover .play-overlay { opacity:1; }
+  .video-info { padding: 12px; }
+  .video-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .video-meta { font-size: 11px; color: var(--text3); }
+  .video-actions { display:flex; gap:6px; margin-top:10px; }
+
+  /* Scrollbar */
   /* Scrollbar */
   ::-webkit-scrollbar { width: 5px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -501,6 +532,9 @@
       <button class="nav-item" data-page="graficos" onclick="navTo('graficos')">
         <span class="icon">📈</span> Gráficos
       </button>
+      <button class="nav-item" data-page="videos" onclick="navTo('videos')">
+        <span class="icon">🎥</span> Vídeos
+      </button>
     </nav>
     <div class="sidebar-footer">
       <button class="nav-item full-w" onclick="logout()">
@@ -572,7 +606,7 @@
         <div id="pac-selector"></div>
       </div>
       <!-- Paciente selecionado (resumo) -->
-      <div class="card hidden" id="card-pac-selecionado" style="display:none">
+      <div class="card" id="card-pac-selecionado" style="display:none">
         <div style="display:flex;align-items:center;justify-content:space-between">
           <div style="display:flex;align-items:center;gap:14px">
             <div id="pac-sel-avatar" style="width:46px;height:46px;border-radius:50%;background:linear-gradient(135deg,#c084fc,#818cf8);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:white;flex-shrink:0"></div>
@@ -700,6 +734,73 @@
       </div>
     </div>
 
+    <!-- ── VÍDEOS ── -->
+    <div id="page-videos" class="page">
+      <div class="page-header">
+        <div><h1>Vídeos</h1><p>Gravações dos atendimentos</p></div>
+        <div class="page-header-actions">
+          <select id="filtro-paciente-vid" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 14px;border-radius:var(--radius-sm);font-family:inherit" onchange="carregarVideos()">
+            <option value="">Todos os pacientes</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Upload / Gravação -->
+      <div class="card">
+        <div class="card-title">Adicionar Vídeo</div>
+        <div class="two-col">
+          <div class="field">
+            <label>Paciente</label>
+            <select id="vid-paciente" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:12px 14px;border-radius:var(--radius-sm);font-family:inherit;width:100%">
+              <option value="">Selecione...</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Sessão (opcional)</label>
+            <select id="vid-sessao" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:12px 14px;border-radius:var(--radius-sm);font-family:inherit;width:100%">
+              <option value="">Sem sessão específica</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label>Título / Descrição</label>
+          <input type="text" id="vid-titulo" placeholder="Ex: Sessão de mando — habilidade nova">
+        </div>
+        <!-- Botões de ação -->
+        <div class="flex-gap">
+          <label class="btn btn-ghost" style="flex:1;cursor:pointer;text-align:center">
+            📁 Upload de Vídeo
+            <input type="file" id="vid-upload-input" accept="video/*" style="display:none" onchange="uploadVideo(this)">
+          </label>
+          <button class="btn btn-ghost" style="flex:1" onclick="iniciarGravacao()">
+            🔴 Gravar Agora
+          </button>
+        </div>
+        <!-- Gravação ao vivo -->
+        <div id="gravacao-area" style="display:none;margin-top:16px">
+          <video id="vid-preview" autoplay muted playsinline style="width:100%;border-radius:var(--radius);background:#000;max-height:300px"></video>
+          <div class="flex-gap" style="margin-top:10px">
+            <button class="btn" id="btn-gravar" style="flex:1;background:var(--red);color:white" onclick="toggleGravacao()">⏺ Iniciar Gravação</button>
+            <button class="btn btn-ghost" style="flex:1" onclick="cancelarGravacao()">✕ Cancelar</button>
+          </div>
+          <div id="gravacao-timer" style="text-align:center;font-family:'DM Mono',monospace;font-size:20px;margin-top:8px;color:var(--red);display:none">00:00</div>
+        </div>
+        <!-- Progresso upload -->
+        <div id="vid-progress" style="display:none;margin-top:12px">
+          <div style="font-size:13px;color:var(--text2);margin-bottom:6px" id="vid-progress-label">Enviando...</div>
+          <div style="height:6px;background:var(--surface3);border-radius:3px;overflow:hidden">
+            <div id="vid-progress-bar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:3px;transition:width 0.3s"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Galeria -->
+      <div class="card">
+        <div class="card-title">Galeria de Vídeos</div>
+        <div id="videos-galeria"><p style="color:var(--text3);font-size:13px">Carregando...</p></div>
+      </div>
+    </div>
+
   </main>
 
   <!-- Mobile Nav -->
@@ -719,6 +820,9 @@
       </button>
       <button class="mob-nav-item" data-page="pacientes" onclick="navTo('pacientes')">
         <span class="icon">👤</span>Pacientes
+      </button>
+      <button class="mob-nav-item" data-page="videos" onclick="navTo('videos')">
+        <span class="icon">🎥</span>Vídeos
       </button>
     </div>
   </nav>
@@ -913,6 +1017,7 @@ async function iniciarApp() {
   construirSliders();
   construirSeletorPacientes();
   preencherSelects();
+  preencherSelectsVideos();
   carregarDashboard();
   iniciarChartPreview();
 }
@@ -931,6 +1036,7 @@ function navTo(page) {
   if (page === 'historico') carregarHistorico();
   if (page === 'pacientes') carregarPacientesPage();
   if (page === 'graficos') carregarGraficosPage();
+  if (page === 'videos') carregarVideosPage();
 }
 
 // ═══════════════════════════════════════════════
@@ -1001,13 +1107,16 @@ function filtrarPacientes(termo) {
   const t = (termo || '').trim();
   if (!t) { c.innerHTML = ''; return; }
   const filtrados = state.pacientes.filter(p => p.nome.toLowerCase().includes(t.toLowerCase()));
-  c.innerHTML = filtrados.map(p => `
-    <div class="pac-card" id="pcard-${p.id}" onclick="selecionarPaciente('${p.id}')" style="cursor:pointer">
-      <div class="pac-avatar">${p.nome.charAt(0).toUpperCase()}</div>
+  c.innerHTML = filtrados.map(p => {
+    const av = p.foto_url
+      ? `<img src="${p.foto_url}" style="width:52px;height:52px;border-radius:50%;object-fit:cover;margin:0 auto 10px;display:block;border:2px solid var(--accent)">`
+      : `<div class="pac-avatar">${p.nome.charAt(0).toUpperCase()}</div>`;
+    return `<div class="pac-card" id="pcard-${p.id}" onclick="selecionarPaciente('${p.id}')" style="cursor:pointer">
+      ${av}
       <div class="pac-name">${p.nome}</div>
       <div class="pac-info">${p.data_nascimento ? calcIdade(p.data_nascimento) : ''}</div>
-    </div>
-  `).join('') || '<p style="color:var(--text3);font-size:13px;padding:8px 0">Nenhum paciente encontrado.</p>';
+    </div>`;
+  }).join('') || '<p style="color:var(--text3);font-size:13px;padding:8px 0">Nenhum paciente encontrado.</p>';
 }
 
 function selecionarPaciente(id) {
@@ -1020,7 +1129,16 @@ function selecionarPaciente(id) {
   // Esconde seletor, mostra card do paciente selecionado
   document.getElementById('card-pac-selector').style.display = 'none';
   document.getElementById('card-pac-selecionado').style.display = 'block';
-  document.getElementById('pac-sel-avatar').textContent = pac.nome.charAt(0).toUpperCase();
+  const selAvEl = document.getElementById('pac-sel-avatar');
+  if (pac.foto_url) {
+    selAvEl.innerHTML = `<img src="${pac.foto_url}" style="width:46px;height:46px;border-radius:50%;object-fit:cover;border:2px solid var(--accent)">`;
+    selAvEl.style.background = 'none';
+    selAvEl.style.fontSize = '0';
+  } else {
+    selAvEl.innerHTML = pac.nome.charAt(0).toUpperCase();
+    selAvEl.style.background = '';
+    selAvEl.style.fontSize = '';
+  }
   document.getElementById('pac-sel-nome').textContent = pac.nome;
   document.getElementById('pac-sel-info').textContent = pac.data_nascimento ? calcIdade(pac.data_nascimento) : 'Sem data de nascimento';
 }
@@ -1229,6 +1347,12 @@ function resetarSessao() {
   });
   document.getElementById('marco-obs').value = '';
   atualizarPreview();
+  // Reseta seletor de paciente para novo atendimento
+  state.pacienteSelecionado = null;
+  document.getElementById('card-pac-selecionado').style.display = 'none';
+  document.getElementById('card-pac-selector').style.display = 'block';
+  document.getElementById('pac-selector').innerHTML = '';
+  document.getElementById('busca-paciente').value = '';
 }
 
 // ═══════════════════════════════════════════════
@@ -1333,9 +1457,18 @@ async function carregarHistorico() {
 async function carregarPacientesPage() {
   const c = document.getElementById('pacientes-lista');
   state.pacientes = await getPacientes();
-  c.innerHTML = state.pacientes.map(p => `
-    <div class="pac-card" style="position:relative;text-align:center">
-      <div class="pac-avatar">${p.nome.charAt(0).toUpperCase()}</div>
+  c.innerHTML = state.pacientes.map(p => {
+    const avatarHtml = p.foto_url
+      ? `<img src="${p.foto_url}" style="width:52px;height:52px;border-radius:50%;object-fit:cover;border:2px solid var(--accent)">`
+      : `<div class="pac-avatar">${p.nome.charAt(0).toUpperCase()}</div>`;
+    return `<div class="pac-card" style="position:relative;text-align:center">
+      <div style="display:flex;justify-content:center;margin-bottom:10px;position:relative">
+        ${avatarHtml}
+        <label style="position:absolute;bottom:-2px;right:calc(50% - 34px);width:20px;height:20px;background:var(--accent);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:11px" title="Trocar foto">
+          📷
+          <input type="file" accept="image/*" style="display:none" onchange="uploadFotoPaciente('${p.id}',this)">
+        </label>
+      </div>
       <div class="pac-name">${p.nome}</div>
       <div class="pac-info">${p.data_nascimento ? calcIdade(p.data_nascimento) : 'Sem data'}</div>
       ${p.observacoes ? `<div style="font-size:11px;color:var(--text3);margin-top:6px">${p.observacoes.substring(0,50)}</div>` : ''}
@@ -1343,8 +1476,8 @@ async function carregarPacientesPage() {
         <button class="btn btn-ghost" style="padding:6px 14px;font-size:12px;flex:1" onclick="editarPaciente('${p.id}')">✏️ Editar</button>
         <button class="btn" style="padding:6px 14px;font-size:12px;background:rgba(248,113,113,0.15);border:1px solid var(--red);color:var(--red)" onclick="excluirPaciente('${p.id}','${p.nome}')">🗑️</button>
       </div>
-    </div>
-  `).join('') || '<p style="color:var(--text3);font-size:13px">Nenhum paciente.</p>';
+    </div>`;
+  }).join('') || '<p style="color:var(--text3);font-size:13px">Nenhum paciente.</p>';
 }
 
 function abrirNovoPaciente() {
@@ -1638,6 +1771,301 @@ function toast(msg, type = '') {
   t.textContent = msg;
   t.className = `show ${type}`;
   setTimeout(() => t.className = '', 3000);
+}
+
+
+// ═══════════════════════════════════════════════
+// VÍDEOS
+// ═══════════════════════════════════════════════
+const BUCKET = 'videos-atendimentos';
+let mediaRecorder = null;
+let recordedChunks = [];
+let recordingStream = null;
+let timerInterval = null;
+let recordingSeconds = 0;
+
+async function carregarVideosPage() {
+  preencherSelectsVideos();
+  carregarVideos();
+}
+
+function preencherSelectsVideos() {
+  const selPac = document.getElementById('vid-paciente');
+  const filtro = document.getElementById('filtro-paciente-vid');
+  if (selPac) {
+    selPac.innerHTML = '<option value="">Selecione...</option>' +
+      state.pacientes.map(p => `<option value="${p.id}">${p.nome}</option>`).join('');
+  }
+  if (filtro) {
+    filtro.innerHTML = '<option value="">Todos os pacientes</option>' +
+      state.pacientes.map(p => `<option value="${p.id}">${p.nome}</option>`).join('');
+  }
+  // Ao trocar paciente no form, carrega sessões dele
+  if (selPac) selPac.addEventListener('change', () => carregarSessoesParaVideo());
+}
+
+async function carregarSessoesParaVideo() {
+  const pacId = document.getElementById('vid-paciente').value;
+  const sel = document.getElementById('vid-sessao');
+  sel.innerHTML = '<option value="">Sem sessão específica</option>';
+  if (!pacId) return;
+  const sessoes = await getSessoes(pacId, 20);
+  sel.innerHTML += sessoes.map(s => `<option value="${s.id}">${formatDate(s.data_sessao)} — média ${s.media_geral?.toFixed(1)||'?'}</option>`).join('');
+}
+
+async function carregarVideos() {
+  const filtro = document.getElementById('filtro-paciente-vid')?.value || '';
+  const galeria = document.getElementById('videos-galeria');
+  galeria.innerHTML = '<p style="color:var(--text3);font-size:13px">Carregando...</p>';
+
+  try {
+    let q = 'videos?order=criado_em.desc&limit=50';
+    if (filtro) q += `&paciente_id=eq.${filtro}`;
+    const videos = await sbFetch(q);
+
+    if (!videos.length) {
+      galeria.innerHTML = '<p style="color:var(--text3);font-size:13px">Nenhum vídeo ainda. Adicione o primeiro acima!</p>';
+      return;
+    }
+
+    galeria.innerHTML = '<div class="video-grid">' + videos.map(v => {
+      const pac = state.pacientes.find(p => p.id === v.paciente_id);
+      const url = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${v.storage_path}`;
+      return `<div class="video-card">
+        <div class="video-thumb" onclick="abrirVideoModal('${url}','${v.titulo||''}')">
+          <video src="${url}" preload="metadata" style="width:100%;height:100%;object-fit:cover"></video>
+          <div class="play-overlay">▶️</div>
+        </div>
+        <div class="video-info">
+          <div class="video-title">${v.titulo || 'Sem título'}</div>
+          <div class="video-meta">${pac?.nome || '—'} · ${formatDate(v.criado_em?.split('T')[0])}</div>
+          <div class="video-actions">
+            <a href="${url}" target="_blank" class="btn btn-ghost" style="flex:1;font-size:12px;padding:6px 10px;text-decoration:none;text-align:center">⬇️ Baixar</a>
+            <button class="btn" style="font-size:12px;padding:6px 10px;background:rgba(248,113,113,0.15);border:1px solid var(--red);color:var(--red)" onclick="excluirVideo('${v.id}','${v.storage_path}')">🗑️</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('') + '</div>';
+  } catch(e) {
+    galeria.innerHTML = `<p style="color:var(--red);font-size:13px">Erro: ${e.message}</p>`;
+  }
+}
+
+// ── UPLOAD ──
+async function uploadVideo(input) {
+  const file = input.files[0];
+  if (!file) return;
+  await enviarArquivoVideo(file);
+  input.value = '';
+}
+
+async function enviarArquivoVideo(blob, extensao = 'mp4') {
+  const pacId = document.getElementById('vid-paciente').value;
+  if (!pacId) { toast('Selecione um paciente primeiro', 'error'); return; }
+
+  const titulo = document.getElementById('vid-titulo').value.trim() || 'Sem título';
+  const sessaoId = document.getElementById('vid-sessao').value || null;
+  const fileName = `${pacId}/${Date.now()}.${extensao}`;
+
+  mostrarProgresso('Enviando vídeo...');
+
+  try {
+    // Upload para Supabase Storage
+    const uploadRes = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${fileName}`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': blob.type || 'video/mp4',
+      },
+      body: blob
+    });
+
+    if (!uploadRes.ok) {
+      const err = await uploadRes.text();
+      throw new Error(err);
+    }
+
+    atualizarProgresso(70, 'Salvando registro...');
+
+    // Salva registro na tabela
+    await sbFetch('videos', {
+      method: 'POST',
+      body: JSON.stringify({
+        paciente_id: pacId,
+        sessao_id: sessaoId,
+        titulo,
+        storage_path: fileName,
+        tamanho_bytes: blob.size,
+      })
+    });
+
+    atualizarProgresso(100, 'Concluído! ✅');
+    setTimeout(() => {
+      esconderProgresso();
+      toast('Vídeo salvo com sucesso! 🎥', 'success');
+      document.getElementById('vid-titulo').value = '';
+      carregarVideos();
+    }, 800);
+
+  } catch(e) {
+    esconderProgresso();
+    toast('Erro ao enviar: ' + e.message, 'error');
+    console.error(e);
+  }
+}
+
+function mostrarProgresso(label) {
+  document.getElementById('vid-progress').style.display = 'block';
+  document.getElementById('vid-progress-label').textContent = label;
+  document.getElementById('vid-progress-bar').style.width = '10%';
+}
+function atualizarProgresso(pct, label) {
+  document.getElementById('vid-progress-bar').style.width = pct + '%';
+  if (label) document.getElementById('vid-progress-label').textContent = label;
+}
+function esconderProgresso() {
+  document.getElementById('vid-progress').style.display = 'none';
+}
+
+// ── GRAVAÇÃO ──
+async function iniciarGravacao() {
+  try {
+    recordingStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    document.getElementById('vid-preview').srcObject = recordingStream;
+    document.getElementById('gravacao-area').style.display = 'block';
+    document.getElementById('gravacao-area').scrollIntoView({ behavior: 'smooth' });
+  } catch(e) {
+    toast('Não foi possível acessar a câmera: ' + e.message, 'error');
+  }
+}
+
+function toggleGravacao() {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    // Para gravação
+    mediaRecorder.stop();
+    clearInterval(timerInterval);
+    document.getElementById('btn-gravar').textContent = '⏺ Iniciar Gravação';
+    document.getElementById('btn-gravar').style.background = 'var(--red)';
+    document.getElementById('gravacao-timer').style.display = 'none';
+  } else {
+    // Inicia gravação
+    recordedChunks = [];
+    recordingSeconds = 0;
+    const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
+    mediaRecorder = new MediaRecorder(recordingStream, { mimeType });
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+    mediaRecorder.onstop = async () => {
+      const blob = new Blob(recordedChunks, { type: 'video/webm' });
+      await enviarArquivoVideo(blob, 'webm');
+      cancelarGravacao();
+    };
+    mediaRecorder.start(1000);
+    document.getElementById('btn-gravar').textContent = '⏹ Parar e Salvar';
+    document.getElementById('btn-gravar').style.background = '#666';
+    document.getElementById('gravacao-timer').style.display = 'block';
+    timerInterval = setInterval(() => {
+      recordingSeconds++;
+      const m = String(Math.floor(recordingSeconds/60)).padStart(2,'0');
+      const s = String(recordingSeconds%60).padStart(2,'0');
+      document.getElementById('gravacao-timer').textContent = `${m}:${s}`;
+    }, 1000);
+  }
+}
+
+function cancelarGravacao() {
+  if (recordingStream) {
+    recordingStream.getTracks().forEach(t => t.stop());
+    recordingStream = null;
+  }
+  clearInterval(timerInterval);
+  mediaRecorder = null;
+  recordedChunks = [];
+  document.getElementById('gravacao-area').style.display = 'none';
+  document.getElementById('vid-preview').srcObject = null;
+  document.getElementById('btn-gravar').textContent = '⏺ Iniciar Gravação';
+  document.getElementById('gravacao-timer').style.display = 'none';
+}
+
+// ── MODAL VÍDEO ──
+function abrirVideoModal(url, titulo) {
+  const existing = document.getElementById('modal-video-player');
+  if (existing) existing.remove();
+  const div = document.createElement('div');
+  div.id = 'modal-video-player';
+  div.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:300;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px';
+  div.innerHTML = `
+    <div style="width:100%;max-width:800px">
+      ${titulo ? `<div style="font-size:16px;font-weight:600;margin-bottom:12px;color:white">${titulo}</div>` : ''}
+      <video src="${url}" controls autoplay style="width:100%;border-radius:var(--radius);max-height:70vh"></video>
+      <button onclick="document.getElementById('modal-video-player').remove()" class="btn btn-ghost" style="margin-top:14px;width:100%">✕ Fechar</button>
+    </div>`;
+  div.onclick = e => { if (e.target === div) div.remove(); };
+  document.body.appendChild(div);
+}
+
+async function excluirVideo(id, path) {
+  if (!confirm('Excluir este vídeo permanentemente?')) return;
+  try {
+    // Remove do storage
+    await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${path}`, {
+      method: 'DELETE',
+      headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+    });
+    // Remove da tabela
+    await sbFetch(`videos?id=eq.${id}`, { method: 'DELETE', prefer: 'return=minimal' });
+    toast('Vídeo excluído ✅', 'success');
+    carregarVideos();
+  } catch(e) { toast('Erro ao excluir: ' + e.message, 'error'); }
+}
+
+// ═══════════════════════════════════════════════
+// FOTO DO PACIENTE
+// ═══════════════════════════════════════════════
+async function uploadFotoPaciente(pacId, input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  const ext = file.name.split('.').pop();
+  const path = `${pacId}/foto.${ext}`;
+
+  toast('Enviando foto...', '');
+
+  try {
+    // Upload para storage (upsert)
+    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/fotos-pacientes/${path}`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': file.type,
+        'x-upsert': 'true',
+      },
+      body: file
+    });
+
+    if (!res.ok) throw new Error(await res.text());
+
+    // URL pública
+    const fotoUrl = `${SUPABASE_URL}/storage/v1/object/public/fotos-pacientes/${path}?t=${Date.now()}`;
+
+    // Atualiza tabela
+    await sbFetch(`pacientes?id=eq.${pacId}`, {
+      method: 'PATCH',
+      prefer: 'return=minimal',
+      body: JSON.stringify({ foto_url: fotoUrl })
+    });
+
+    toast('Foto atualizada! ✅', 'success');
+    state.pacientes = await getPacientes();
+    construirSeletorPacientes();
+    carregarPacientesPage();
+  } catch(e) {
+    toast('Erro ao enviar foto: ' + e.message, 'error');
+    console.error(e);
+  } finally {
+    input.value = '';
+  }
 }
 
 // Enter no login
