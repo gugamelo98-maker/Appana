@@ -566,6 +566,7 @@
       <!-- Seleção de paciente -->
       <div class="card">
         <div class="card-title">Paciente</div>
+        <div class="field" style="margin-bottom:14px"><input type="text" id="busca-paciente" placeholder="🔍 Buscar paciente pelo nome..." oninput="filtrarPacientes(this.value)" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:15px;padding:12px 14px;width:100%;outline:none"></div>
         <div class="pacientes-grid" id="pac-selector"></div>
       </div>
 
@@ -707,6 +708,24 @@
     </div>
   </nav>
 
+</div>
+
+<!-- ═══ MODAL DETALHE SESSÃO ═══ -->
+<div class="modal-overlay" id="modal-sessao">
+  <div class="modal" style="max-width:560px;max-height:90vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <div>
+        <div class="modal-title" id="msessao-titulo">Detalhe da Sessão</div>
+        <div style="font-size:13px;color:var(--text2)" id="msessao-sub"></div>
+      </div>
+      <button onclick="fecharSessaoModal()" style="font-size:18px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;width:36px;height:36px;cursor:pointer;color:var(--text)">✕</button>
+    </div>
+    <div id="msessao-body"></div>
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button class="btn btn-ghost full-w" onclick="fecharSessaoModal()">Fechar</button>
+      <button class="btn btn-ghost full-w" onclick="exportarPDFSessaoDetalhe()">📄 PDF</button>
+    </div>
+  </div>
 </div>
 
 <!-- ═══ MODAL EMAIL ═══ -->
@@ -970,6 +989,130 @@ function selecionarPaciente(id) {
     c.classList.toggle('selected', c.id === `pcard-${id}`);
   });
 }
+function filtrarPacientes(termo) {
+  const filtrados = termo.trim()
+    ? state.pacientes.filter(p => p.nome.toLowerCase().includes(termo.toLowerCase()))
+    : state.pacientes;
+  const c = document.getElementById('pac-selector');
+  c.innerHTML = filtrados.map(p => `
+    <div class="pac-card${state.pacienteSelecionado === p.id ? ' selected' : ''}" id="pcard-${p.id}" onclick="selecionarPaciente('${p.id}')">
+      <div class="pac-avatar">${p.nome.charAt(0).toUpperCase()}</div>
+      <div class="pac-name">${p.nome}</div>
+      <div class="pac-info">${p.data_nascimento ? calcIdade(p.data_nascimento) : ''}</div>
+    </div>
+  `).join('') || '<p style="color:var(--text3);font-size:13px">Nenhum paciente encontrado.</p>';
+}
+
+// Detalhe de sessão
+let sessaoDetalheAtual = null;
+
+function abrirSessaoDetalhe(sessao) {
+  sessaoDetalheAtual = sessao;
+  const pac = state.pacientes.find(p => p.id === sessao.paciente_id);
+  document.getElementById('msessao-titulo').textContent = pac?.nome || 'Paciente';
+  document.getElementById('msessao-sub').textContent = `${formatDate(sessao.data_sessao)} · ${sessao.terapeuta || ''}`;
+
+  const cor = getMediaColor(sessao.media_geral);
+  let html = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding:14px;background:var(--surface2);border-radius:var(--radius-sm)">
+      <span style="font-size:13px;color:var(--text2)">Média Geral</span>
+      <span style="font-size:28px;font-weight:700;font-family:'DM Mono',monospace;color:${cor}">${sessao.media_geral?.toFixed(1) || '—'}</span>
+    </div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--green);margin-bottom:10px">🌟 Habilidades</div>
+  `;
+
+  HABILIDADES.forEach(a => {
+    const val = sessao[a.key] || 0;
+    const ajudas = sessao.niveis_ajuda?.[a.key] || [];
+    const pct = (val / 10) * 100;
+    html += `
+      <div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+          <span style="font-size:13px;display:flex;align-items:center;gap:7px">
+            <span style="width:8px;height:8px;border-radius:50%;background:${a.color};display:inline-block"></span>
+            ${a.label}
+          </span>
+          <span style="font-family:'DM Mono',monospace;font-size:13px;font-weight:600">${val}</span>
+        </div>
+        <div style="height:5px;background:var(--surface3);border-radius:3px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:${a.color};border-radius:3px;transition:width 0.4s"></div>
+        </div>
+        ${ajudas.length ? `<div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">${ajudas.map(aj => `<span style="font-size:10px;background:rgba(192,132,252,0.15);border:1px solid rgba(192,132,252,0.3);color:var(--accent);padding:2px 8px;border-radius:10px">${aj}</span>`).join('')}</div>` : ''}
+      </div>`;
+  });
+
+  html += `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--red);margin:16px 0 10px">⚠️ Barreiras</div>`;
+
+  BARREIRAS.forEach(a => {
+    const val = sessao[a.key] || 0;
+    const pct = (val / 10) * 100;
+    html += `
+      <div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+          <span style="font-size:13px;display:flex;align-items:center;gap:7px">
+            <span style="width:8px;height:8px;border-radius:50%;background:${a.color};display:inline-block"></span>
+            ${a.label}
+          </span>
+          <span style="font-family:'DM Mono',monospace;font-size:13px;font-weight:600">${val}</span>
+        </div>
+        <div style="height:5px;background:var(--surface3);border-radius:3px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:${a.color};border-radius:3px"></div>
+        </div>
+      </div>`;
+  });
+
+  if (sessao.marco_observacao) {
+    html += `
+      <div style="margin-top:16px;padding:14px;background:var(--surface2);border-radius:var(--radius-sm);border-left:3px solid var(--accent)">
+        <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px">📝 Observação</div>
+        <div style="font-size:13px;color:var(--text2);line-height:1.6">${sessao.marco_observacao}</div>
+      </div>`;
+  }
+
+  document.getElementById('msessao-body').innerHTML = html;
+  document.getElementById('modal-sessao').classList.add('open');
+}
+
+function fecharSessaoModal() {
+  document.getElementById('modal-sessao').classList.remove('open');
+}
+
+function exportarPDFSessaoDetalhe() {
+  if (!sessaoDetalheAtual) return;
+  const s = sessaoDetalheAtual;
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const pac = state.pacientes.find(p => p.id === s.paciente_id);
+
+  doc.setFontSize(18); doc.setTextColor(192,132,252);
+  doc.text('ABA Registro — Relatório de Sessão', 14, 20);
+  doc.setFontSize(12); doc.setTextColor(200,200,200);
+  doc.text(`Paciente: ${pac?.nome || 'N/A'}`, 14, 32);
+  doc.text(`Data: ${formatDate(s.data_sessao)}`, 14, 40);
+  doc.text(`Terapeuta: ${s.terapeuta || '—'}`, 14, 48);
+  doc.text(`Média Geral: ${s.media_geral?.toFixed(1) || '—'}`, 14, 56);
+
+  doc.setFontSize(13); doc.setTextColor(52,211,153);
+  doc.text('Habilidades', 14, 68);
+  doc.setFontSize(11); doc.setTextColor(180,180,200);
+  let y = 76;
+  HABILIDADES.forEach(a => {
+    const ajuda = s.niveis_ajuda?.[a.key]?.join(', ') || '—';
+    doc.text(`${a.label}: ${s[a.key] || 0}  |  ${ajuda}`, 14, y); y += 8;
+  });
+  doc.setFontSize(13); doc.setTextColor(248,113,113);
+  doc.text('Barreiras', 14, y + 4); y += 12;
+  doc.setFontSize(11); doc.setTextColor(180,180,200);
+  BARREIRAS.forEach(a => { doc.text(`${a.label}: ${s[a.key] || 0}`, 14, y); y += 8; });
+  if (s.marco_observacao) {
+    doc.setFontSize(13); doc.setTextColor(192,132,252);
+    doc.text('Observação', 14, y + 4); y += 12;
+    doc.setFontSize(11); doc.setTextColor(180,180,200);
+    doc.text(doc.splitTextToSize(s.marco_observacao, 180), 14, y);
+  }
+  doc.save(`sessao_${pac?.nome || 'paciente'}_${formatDate(s.data_sessao).replace(/\//g,'_')}.pdf`);
+}
+
 
 // ═══════════════════════════════════════════════
 // CHART PREVIEW (radar ao vivo)
@@ -1126,21 +1269,25 @@ async function carregarHistorico() {
     if (!sessoes.length) {
       lista.innerHTML = '<p style="color:var(--text3);font-size:13px">Nenhuma sessão encontrada.</p>'; return;
     }
-    lista.innerHTML = sessoes.map(s => {
+    lista.innerHTML = sessoes.map((s,i) => {
       const pac = state.pacientes.find(p => p.id === s.paciente_id);
       const cor = getMediaColor(s.media_geral);
-      return `<div class="sessao-item">
-        <div>
+      return `<div class="sessao-item" style="cursor:pointer" onclick="abrirSessaoDetalhe(window._sessoesHist[${i}])">
+        <div style="flex:1">
           <div style="font-size:14px;font-weight:600">${pac?.nome || 'Paciente'}</div>
           <div class="sessao-date">${formatDate(s.data_sessao)} · ${s.terapeuta || ''}</div>
-          ${s.marco_observacao ? `<div style="font-size:12px;color:var(--text2);margin-top:4px">📝 ${s.marco_observacao.substring(0,80)}${s.marco_observacao.length>80?'...':''}</div>` : ''}
+          ${s.marco_observacao ? `<div style="font-size:12px;color:var(--text2);margin-top:4px">📝 ${s.marco_observacao.substring(0,60)}${s.marco_observacao.length>60?'...':''}</div>` : ''}
         </div>
-        <div style="text-align:right">
-          <div class="sessao-media" style="color:${cor}">${s.media_geral?.toFixed(1) || '—'}</div>
-          <div style="font-size:11px;color:var(--text3)">média</div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="text-align:right">
+            <div class="sessao-media" style="color:${cor}">${s.media_geral?.toFixed(1) || '—'}</div>
+            <div style="font-size:11px;color:var(--text3)">média</div>
+          </div>
+          <div style="color:var(--text3);font-size:18px">›</div>
         </div>
       </div>`;
     }).join('');
+    window._sessoesHist = sessoes;
   } catch(e) {
     lista.innerHTML = `<p style="color:var(--red);font-size:13px">Erro: ${e.message}</p>`;
   }
