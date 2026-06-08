@@ -567,7 +567,7 @@
       <div class="card" id="card-pac-selector">
         <div class="card-title">Paciente</div>
         <div class="field" style="margin-bottom:14px">
-          <input type="text" id="busca-paciente" placeholder="🔍 Buscar paciente pelo nome..." oninput="filtrarPacientes(this.value)" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:15px;padding:12px 14px;width:100%;outline:none">
+          <input type="text" id="busca-paciente" placeholder="🔍 Buscar paciente pelo nome..." style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:15px;padding:12px 14px;width:100%;outline:none">
         </div>
         <div id="pac-selector"></div>
       </div>
@@ -988,32 +988,54 @@ function toggleAjuda(key, opcao, el) {
 // SELETOR PACIENTES (nova sessão)
 // ═══════════════════════════════════════════════
 function construirSeletorPacientes() {
-  // Reseta para estado inicial — apenas o campo de busca, sem cards
   document.getElementById('pac-selector').innerHTML = '';
+  document.getElementById('busca-paciente').value = '';
   document.getElementById('card-pac-selector').style.display = 'block';
   document.getElementById('card-pac-selecionado').style.display = 'none';
   state.pacienteSelecionado = null;
 }
 
-function selecionarPaciente(id) {
-  state.pacienteSelecionado = id;
-  document.querySelectorAll('.pac-card').forEach(c => {
-    c.classList.toggle('selected', c.id === `pcard-${id}`);
-  });
-}
 function filtrarPacientes(termo) {
-  const filtrados = termo.trim()
-    ? state.pacientes.filter(p => p.nome.toLowerCase().includes(termo.toLowerCase()))
-    : state.pacientes;
+  if (state.pacienteSelecionado) return;
   const c = document.getElementById('pac-selector');
+  const t = (termo || '').trim();
+  if (!t) { c.innerHTML = ''; return; }
+  const filtrados = state.pacientes.filter(p => p.nome.toLowerCase().includes(t.toLowerCase()));
   c.innerHTML = filtrados.map(p => `
-    <div class="pac-card${state.pacienteSelecionado === p.id ? ' selected' : ''}" id="pcard-${p.id}" onclick="selecionarPaciente('${p.id}')">
+    <div class="pac-card" id="pcard-${p.id}" onclick="selecionarPaciente('${p.id}')" style="cursor:pointer">
       <div class="pac-avatar">${p.nome.charAt(0).toUpperCase()}</div>
       <div class="pac-name">${p.nome}</div>
       <div class="pac-info">${p.data_nascimento ? calcIdade(p.data_nascimento) : ''}</div>
     </div>
-  `).join('') || '<p style="color:var(--text3);font-size:13px">Nenhum paciente encontrado.</p>';
+  `).join('') || '<p style="color:var(--text3);font-size:13px;padding:8px 0">Nenhum paciente encontrado.</p>';
 }
+
+function selecionarPaciente(id) {
+  const pac = state.pacientes.find(p => p.id === id);
+  if (!pac) return;
+  state.pacienteSelecionado = id;
+  // Limpa campo e cards
+  document.getElementById('busca-paciente').value = '';
+  document.getElementById('pac-selector').innerHTML = '';
+  // Esconde seletor, mostra card do paciente selecionado
+  document.getElementById('card-pac-selector').style.display = 'none';
+  document.getElementById('card-pac-selecionado').style.display = 'block';
+  document.getElementById('pac-sel-avatar').textContent = pac.nome.charAt(0).toUpperCase();
+  document.getElementById('pac-sel-nome').textContent = pac.nome;
+  document.getElementById('pac-sel-info').textContent = pac.data_nascimento ? calcIdade(pac.data_nascimento) : 'Sem data de nascimento';
+}
+
+function trocarPaciente() {
+  state.pacienteSelecionado = null;
+  document.getElementById('card-pac-selecionado').style.display = 'none';
+  document.getElementById('card-pac-selector').style.display = 'block';
+  document.getElementById('pac-selector').innerHTML = '';
+  document.getElementById('busca-paciente').value = '';
+  document.getElementById('busca-paciente').focus();
+}
+
+
+
 
 // Detalhe de sessão
 let sessaoDetalheAtual = null;
@@ -1621,6 +1643,13 @@ function toast(msg, type = '') {
 // Enter no login
 document.getElementById('senha-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') document.getElementById('terapeuta-nome').focus();
+});
+
+// Busca de paciente — listener isolado, sem oninput inline
+document.addEventListener('input', e => {
+  if (e.target.id === 'busca-paciente') {
+    filtrarPacientes(e.target.value);
+  }
 });
 </script>
 </body>
