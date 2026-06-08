@@ -831,6 +831,11 @@ function fazerLogin() {
 
   state.terapeuta = nome || 'Terapeuta';
   state.logado = true;
+
+  // Salva sessão no localStorage
+  localStorage.setItem('aba_logado', '1');
+  localStorage.setItem('aba_terapeuta', state.terapeuta);
+
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   iniciarApp();
@@ -838,10 +843,23 @@ function fazerLogin() {
 
 function logout() {
   state.logado = false;
+  localStorage.removeItem('aba_logado');
+  localStorage.removeItem('aba_terapeuta');
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('app').style.display = 'none';
   document.getElementById('senha-input').value = '';
 }
+
+// Auto-login se já estava logado
+(function verificarSessao() {
+  if (localStorage.getItem('aba_logado') === '1') {
+    state.terapeuta = localStorage.getItem('aba_terapeuta') || 'Terapeuta';
+    state.logado = true;
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    iniciarApp();
+  }
+})();
 
 // ═══════════════════════════════════════════════
 // INICIALIZAÇÃO
