@@ -768,6 +768,7 @@ let state = {
   terapeuta: '',
   pacientes: [],
   pacienteSelecionado: null,
+  editandoPacienteId: null,
   sessaoAtual: {},
   nivelAjuda: {},
   chartPreview: null,
@@ -1152,29 +1153,82 @@ async function carregarPacientesPage() {
   const c = document.getElementById('pacientes-lista');
   state.pacientes = await getPacientes();
   c.innerHTML = state.pacientes.map(p => `
-    <div class="pac-card">
+    <div class="pac-card" style="position:relative;text-align:center">
       <div class="pac-avatar">${p.nome.charAt(0).toUpperCase()}</div>
       <div class="pac-name">${p.nome}</div>
       <div class="pac-info">${p.data_nascimento ? calcIdade(p.data_nascimento) : 'Sem data'}</div>
       ${p.observacoes ? `<div style="font-size:11px;color:var(--text3);margin-top:6px">${p.observacoes.substring(0,50)}</div>` : ''}
+      <div style="display:flex;gap:6px;margin-top:14px;justify-content:center">
+        <button class="btn btn-ghost" style="padding:6px 14px;font-size:12px;flex:1" onclick="editarPaciente('${p.id}')">✏️ Editar</button>
+        <button class="btn" style="padding:6px 14px;font-size:12px;background:rgba(248,113,113,0.15);border:1px solid var(--red);color:var(--red)" onclick="excluirPaciente('${p.id}','${p.nome}')">🗑️</button>
+      </div>
     </div>
   `).join('') || '<p style="color:var(--text3);font-size:13px">Nenhum paciente.</p>';
 }
 
 function abrirNovoPaciente() {
+  // Limpa form e abre em modo criação
+  state.editandoPacienteId = null;
+  document.getElementById('np-nome').value = '';
+  document.getElementById('np-nasc').value = '';
+  document.getElementById('np-obs').value = '';
+  document.querySelector('#form-novo-paciente .card-title').textContent = 'Novo Paciente';
   document.getElementById('form-novo-paciente').classList.remove('hidden');
+  document.getElementById('form-novo-paciente').scrollIntoView({ behavior: 'smooth' });
+}
+
+function editarPaciente(id) {
+  const p = state.pacientes.find(x => x.id === id);
+  if (!p) return;
+  state.editandoPacienteId = id;
+  document.getElementById('np-nome').value = p.nome;
+  document.getElementById('np-nasc').value = p.data_nascimento || '';
+  document.getElementById('np-obs').value = p.observacoes || '';
+  document.querySelector('#form-novo-paciente .card-title').textContent = 'Editar Paciente';
+  document.getElementById('form-novo-paciente').classList.remove('hidden');
+  document.getElementById('form-novo-paciente').scrollIntoView({ behavior: 'smooth' });
+}
+
+async function excluirPaciente(id, nome) {
+  if (!confirm(`Excluir "${nome}"? Todas as sessões serão removidas também.`)) return;
+  try {
+    await sbFetch(`pacientes?id=eq.${id}`, { method: 'DELETE', prefer: 'return=minimal' });
+    toast(`${nome} excluído ✅`, 'success');
+    state.pacientes = await getPacientes();
+    construirSeletorPacientes();
+    preencherSelects();
+    carregarPacientesPage();
+  } catch(e) { toast('Erro ao excluir: ' + e.message, 'error'); }
 }
 
 async function salvarNovoPaciente() {
   const nome = document.getElementById('np-nome').value.trim();
   if (!nome) { toast('Digite o nome do paciente', 'error'); return; }
+
   try {
-    await inserirPaciente({
-      nome,
-      data_nascimento: document.getElementById('np-nasc').value || null,
-      observacoes: document.getElementById('np-obs').value || null,
-    });
-    toast('Paciente cadastrado! ✅', 'success');
+    if (state.editandoPacienteId) {
+      // Editar existente
+      await sbFetch(`pacientes?id=eq.${state.editandoPacienteId}`, {
+        method: 'PATCH',
+        prefer: 'return=minimal',
+        body: JSON.stringify({
+          nome,
+          data_nascimento: document.getElementById('np-nasc').value || null,
+          observacoes: document.getElementById('np-obs').value || null,
+        })
+      });
+      toast('Paciente atualizado! ✅', 'success');
+    } else {
+      // Novo paciente
+      await inserirPaciente({
+        nome,
+        data_nascimento: document.getElementById('np-nasc').value || null,
+        observacoes: document.getElementById('np-obs').value || null,
+      });
+      toast('Paciente cadastrado! ✅', 'success');
+    }
+
+    state.editandoPacienteId = null;
     document.getElementById('form-novo-paciente').classList.add('hidden');
     document.getElementById('np-nome').value = '';
     document.getElementById('np-nasc').value = '';
